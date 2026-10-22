@@ -64,7 +64,7 @@ deps() {
     tee crates/core/coalesced/src/lib.rs |
     tee crates/core/ratelimits/src/lib.rs |
     tee crates/common/otel/src/lib.rs
-  
+
   if [ -z "$TARGETARCH" ]; then
     cargo build -j "${CARGO_BUILD_JOBS:-10}" --locked --release
   else
@@ -73,14 +73,21 @@ deps() {
 }
 
 apps() {
-  touch -am \
+  # Принудительно меняем содержимое файлов, чтобы Cargo пересобрал бинарники.
+  # touch -am не работает с инкрементальной сборкой Cargo 1.8x+, т.к. хеш
+  # содержимого не меняется.
+  for f in \
     crates/bonfire/src/main.rs \
     crates/delta/src/main.rs \
+    crates/services/autumn/src/main.rs \
+    crates/services/january/src/main.rs \
+    crates/services/gifbox/src/main.rs \
     crates/daemons/crond/src/main.rs \
     crates/daemons/pushd/src/main.rs \
     crates/daemons/voice-ingress/src/main.rs \
     crates/core/config/src/lib.rs \
     crates/core/database/src/lib.rs \
+    crates/core/files/src/lib.rs \
     crates/core/models/src/lib.rs \
     crates/core/parser/src/lib.rs \
     crates/core/permissions/src/lib.rs \
@@ -88,8 +95,12 @@ apps() {
     crates/core/result/src/lib.rs \
     crates/core/coalesced/src/lib.rs \
     crates/core/ratelimits/src/lib.rs \
-    crates/common/otel/src/lib.rs
-  
+    crates/common/otel/src/lib.rs \
+  ; do
+    # Добавляем уникальный маркер, чтобы изменился хеш содержимого
+    echo "// rebuild marker $(date +%s%N)" >> "$f"
+  done
+
   if [ -z "$TARGETARCH" ]; then
     cargo build -j "${CARGO_BUILD_JOBS:-10}" --locked --release
   else
