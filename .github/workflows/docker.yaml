@@ -113,17 +113,17 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/${{ github.repository_owner }}/base:${{ steps.base.outputs.tag }}
+          tags: ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           cache-from: type=gha,scope=buildx-base-multi-arch
           cache-to: type=gha,scope=buildx-base-multi-arch,mode=max
 
-      # stoatchat/api
+      # cynkru/server
       - name: Docker meta
         id: meta-delta
         uses: docker/metadata-action@v4
         with:
           images: |
-            ghcr.io/stoatchat/api
+            ghcr.io/cynkru/server
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
         uses: docker/build-push-action@v4
@@ -134,16 +134,16 @@ jobs:
           file: crates/delta/Dockerfile
           tags: ${{ steps.meta-delta.outputs.tags }}
           build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/base:${{ steps.base.outputs.tag }}
+            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-delta.outputs.labels }}
 
-      # stoatchat/events
+      # cynkru/bonfire
       - name: Docker meta
         id: meta-bonfire
         uses: docker/metadata-action@v4
         with:
           images: |
-            ghcr.io/stoatchat/events
+            ghcr.io/cynkru/bonfire
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
         uses: docker/build-push-action@v4
@@ -154,16 +154,16 @@ jobs:
           file: crates/bonfire/Dockerfile
           tags: ${{ steps.meta-bonfire.outputs.tags }}
           build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/base:${{ steps.base.outputs.tag }}
+            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-bonfire.outputs.labels }}
 
-      # stoatchat/file-server
+      # cynkru/autumn
       - name: Docker meta
         id: meta-autumn
         uses: docker/metadata-action@v4
         with:
           images: |
-            ghcr.io/stoatchat/file-server
+            ghcr.io/cynkru/autumn
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
         uses: docker/build-push-action@v4
@@ -174,16 +174,16 @@ jobs:
           file: crates/services/autumn/Dockerfile
           tags: ${{ steps.meta-autumn.outputs.tags }}
           build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/base:${{ steps.base.outputs.tag }}
+            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-autumn.outputs.labels }}
 
-      # stoatchat/proxy
+      # cynkru/january
       - name: Docker meta
         id: meta-january
         uses: docker/metadata-action@v4
         with:
           images: |
-            ghcr.io/stoatchat/proxy
+            ghcr.io/cynkru/january
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
         uses: docker/build-push-action@v4
@@ -194,16 +194,16 @@ jobs:
           file: crates/services/january/Dockerfile
           tags: ${{ steps.meta-january.outputs.tags }}
           build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/base:${{ steps.base.outputs.tag }}
+            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-january.outputs.labels }}
 
-      # stoatchat/gifbox
+      # cynkru/gifbox
       - name: Docker meta
         id: meta-gifbox
         uses: docker/metadata-action@v4
         with:
           images: |
-            ghcr.io/stoatchat/gifbox
+            ghcr.io/cynkru/gifbox
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
         uses: docker/build-push-action@v4
@@ -214,16 +214,16 @@ jobs:
           file: crates/services/gifbox/Dockerfile
           tags: ${{ steps.meta-gifbox.outputs.tags }}
           build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/base:${{ steps.base.outputs.tag }}
+            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-gifbox.outputs.labels }}
 
-      # stoatchat/crond
+      # cynkru/crond
       - name: Docker meta
         id: meta-crond
         uses: docker/metadata-action@v4
         with:
           images: |
-            ghcr.io/stoatchat/crond
+            ghcr.io/cynkru/crond
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
         uses: docker/build-push-action@v4
@@ -234,16 +234,16 @@ jobs:
           file: crates/daemons/crond/Dockerfile
           tags: ${{ steps.meta-crond.outputs.tags }}
           build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/base:${{ steps.base.outputs.tag }}
+            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-crond.outputs.labels }}
 
-      # stoatchat/pushd
+      # cynkru/pushd
       - name: Docker meta
         id: meta-pushd
         uses: docker/metadata-action@v4
         with:
           images: |
-            ghcr.io/stoatchat/pushd
+            ghcr.io/cynkru/pushd
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
         uses: docker/build-push-action@v4
@@ -254,16 +254,16 @@ jobs:
           file: crates/daemons/pushd/Dockerfile
           tags: ${{ steps.meta-pushd.outputs.tags }}
           build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/base:${{ steps.base.outputs.tag }}
+            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-pushd.outputs.labels }}
 
-      # stoatchat/voice-ingress
+      # cynkru/voice-ingress
       - name: Docker meta
         id: meta-voice-ingress
         uses: docker/metadata-action@v4
         with:
           images: |
-            ghcr.io/stoatchat/voice-ingress
+            ghcr.io/cynkru/voice-ingress
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
         uses: docker/build-push-action@v4
@@ -274,5 +274,5 @@ jobs:
           file: crates/daemons/voice-ingress/Dockerfile
           tags: ${{ steps.meta-voice-ingress.outputs.tags }}
           build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/base:${{ steps.base.outputs.tag }}
+            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-voice-ingress.outputs.labels }}

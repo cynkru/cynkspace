@@ -1,5 +1,5 @@
 # Build Stage
-FROM ghcr.io/stoatchat/base:latest AS builder
+FROM ghcr.io/cynkru/base:latest AS builder
 FROM debian:13 AS debian
 
 # Bundle Stage
