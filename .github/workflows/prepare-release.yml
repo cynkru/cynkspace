@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_type:
-        description: "major or minor from main, patch from release/vX.Y"
+        description: "major or minor from master, patch from release/vX.Y"
         required: true
         default: minor
         type: choice
@@ -26,7 +26,7 @@ jobs:
           RELEASE_TYPE: ${{ inputs.release_type }}
         run: |
           case "$BRANCH:$RELEASE_TYPE" in
-            main:major | main:minor | release/*:patch) ;;
+            master:major | master:minor | release/*:patch) ;;
             *)
               echo "::error::$RELEASE_TYPE cannot be released from $BRANCH"
               exit 1
@@ -68,7 +68,7 @@ jobs:
         run: mise run release:notes "$VERSION"
 
       - name: Cut the release branch
-        if: ${{ github.ref_name == 'main' }}
+        if: ${{ github.ref_name == 'master' }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ steps.bump.outputs.version }}
