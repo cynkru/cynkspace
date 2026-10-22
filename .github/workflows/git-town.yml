@@ -9,7 +9,7 @@ on:
 jobs:
   git-town:
     name: Display the branch stack
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
 
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'release-please--') }}
 
