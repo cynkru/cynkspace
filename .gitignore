@@ -1,0 +1,17 @@
+Rocket.toml
+Revolt.*.toml
+compose.override.yml
+
+target
+.data
+.env
+.venv/
+venv/
+
+.vercel
+.DS_Store
+
+livekit.yml
+.idea
+.vscode/launch.json
+.mise/config.local.toml
