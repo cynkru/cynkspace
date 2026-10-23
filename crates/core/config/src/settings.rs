@@ -44,8 +44,8 @@ static CONFIG_BUILDER: LazyLock<RwLock<Config>> = LazyLock::new(|| {
         }
 
         if std::env::var("TEST_DB").is_ok() {
-            builder = builder.add_source(File::from_str(
-                include_str!("../Revolt.test.toml"),
+            builder = builder.add_source(File::new(
+                concat!(env!("CARGO_MANIFEST_DIR"), "/Revolt.test.toml"),
                 FileFormat::Toml,
             ));
 
