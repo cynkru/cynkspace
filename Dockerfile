@@ -19,6 +19,7 @@ RUN case "${TARGETARCH}" in \
       make \
       pkg-config \
       "${linker_package}" \
+      "libc6-dev:${TARGETARCH}" \
       "libdav1d-dev:${TARGETARCH}" \
       "libssl-dev:${TARGETARCH}" && \
     rustup target add "${build_target}"
