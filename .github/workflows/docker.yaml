@@ -8,6 +8,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "crates/**"
+      - "scripts/build-image-layer.sh"
       - "Dockerfile"
       - "**/Dockerfile"
       - ".dockerignore"
@@ -20,7 +21,6 @@ on:
 permissions:
   contents: read
   packages: write
-  actions: write          # нужно для удаления кэша
 
 concurrency:
   group: docker-test-${{ github.head_ref || github.ref }}
@@ -41,49 +41,16 @@ jobs:
               - 'Dockerfile'
               - '**/Dockerfile'
               - '.dockerignore'
+              - 'scripts/build-image-layer.sh'
               - 'scripts/publish-debug-image.sh'
-
-  # === Очистка кэша при ручном запуске ===
-  clear-cache:
-    name: Clear GitHub Actions cache (manual run)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    steps:
-      - name: Delete all caches for this repository
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-        run: |
-          echo "Fetching cache list..."
-          # Получаем все ключи кэша (пагинация)
-          keys=$(gh api -X GET "repos/${REPO}/actions/caches?per_page=100" \
-            --paginate --jq '.actions_caches[].key')
-          if [ -z "$keys" ]; then
-            echo "No caches found."
-            exit 0
-          fi
-          echo "Deleting caches:"
-          echo "$keys"
-          # Удаляем по ключу (gh api поддерживает key в query)
-          while IFS= read -r key; do
-            [ -z "$key" ] && continue
-            encoded=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$key")
-            echo "Deleting cache key: $key"
-            gh api -X DELETE "repos/${REPO}/actions/caches?key=${encoded}" || true
-          done <<< "$keys"
-          echo "Cache cleanup done."
 
   base:
     name: Test base image build (fork)
     runs-on: ubuntu-latest
-    needs: [changes, clear-cache]
-    # clear-cache может быть skipped — это нормально
-    if: |
-      always() &&
-      needs.changes.result == 'success' &&
-      (needs.clear-cache.result == 'success' || needs.clear-cache.result == 'skipped') &&
-      (github.event_name == 'pull_request' || github.event.pull_request.head.repo.fork)
+    needs: changes
+    if: github.event_name == 'pull_request' || github.event.pull_request.head.repo.fork
     steps:
+      # Configure build environment
       - name: Checkout
         if: needs.changes.outputs.docker == 'true'
         uses: actions/checkout@v3
@@ -92,6 +59,7 @@ jobs:
         if: needs.changes.outputs.docker == 'true'
         uses: docker/setup-buildx-action@v2
 
+      # Build the image
       - name: Build base image
         if: needs.changes.outputs.docker == 'true'
         uses: docker/build-push-action@v4
@@ -100,25 +68,21 @@ jobs:
           push: false
           platforms: linux/amd64,linux/arm64
           tags: ghcr.io/${{ github.repository_owner }}/base:latest
-          # При ручном запуске — без чтения кэша
-          cache-from: ${{ github.event_name != 'workflow_dispatch' && 'type=gha,scope=buildx-base-multi-arch' || '' }}
+          cache-from: type=gha,scope=buildx-base-multi-arch
           cache-to: type=gha,scope=buildx-base-multi-arch,mode=max
 
   publish:
     runs-on: ubuntu-latest
-    needs: clear-cache
-    if: |
-      always() &&
-      (needs.clear-cache.result == 'success' || needs.clear-cache.result == 'skipped') &&
-      github.event_name != 'pull_request' &&
-      !(github.ref == 'refs/heads/master' && startsWith(github.event.head_commit.message, 'chore(release):'))
+    if: ${{ github.event_name != 'pull_request' && !(github.ref == 'refs/heads/master' && startsWith(github.event.head_commit.message, 'chore(release):')) }}
     name: Publish Docker images
     steps:
+      # Configure build environment
       - name: Checkout
         uses: actions/checkout@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
+      # Authenticate with Docker Hub and GHCR
       - name: Login to Github Container Registry
         uses: docker/login-action@v2
         with:
@@ -142,7 +106,7 @@ jobs:
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
 
-      # При ручном запуске не читаем кэш, но пишем заново
+      # Build the image
       - name: Build base image
         uses: docker/build-push-action@v4
         with:
@@ -150,7 +114,7 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
-          cache-from: ${{ github.event_name != 'workflow_dispatch' && 'type=gha,scope=buildx-base-multi-arch' || '' }}
+          cache-from: type=gha,scope=buildx-base-multi-arch
           cache-to: type=gha,scope=buildx-base-multi-arch,mode=max
 
       # cynkru/server
@@ -172,8 +136,6 @@ jobs:
           build-args: |
             BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-delta.outputs.labels }}
-          cache-from: ${{ github.event_name != 'workflow_dispatch' && 'type=gha,scope=buildx-delta-multi-arch' || '' }}
-          cache-to: type=gha,scope=buildx-delta-multi-arch,mode=max
 
       # cynkru/bonfire
       - name: Docker meta
@@ -194,8 +156,6 @@ jobs:
           build-args: |
             BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-bonfire.outputs.labels }}
-          cache-from: ${{ github.event_name != 'workflow_dispatch' && 'type=gha,scope=buildx-bonfire-multi-arch' || '' }}
-          cache-to: type=gha,scope=buildx-bonfire-multi-arch,mode=max
 
       # cynkru/autumn
       - name: Docker meta
@@ -216,8 +176,6 @@ jobs:
           build-args: |
             BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-autumn.outputs.labels }}
-          cache-from: ${{ github.event_name != 'workflow_dispatch' && 'type=gha,scope=buildx-autumn-multi-arch' || '' }}
-          cache-to: type=gha,scope=buildx-autumn-multi-arch,mode=max
 
       # cynkru/january
       - name: Docker meta
@@ -238,8 +196,6 @@ jobs:
           build-args: |
             BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-january.outputs.labels }}
-          cache-from: ${{ github.event_name != 'workflow_dispatch' && 'type=gha,scope=buildx-january-multi-arch' || '' }}
-          cache-to: type=gha,scope=buildx-january-multi-arch,mode=max
 
       # cynkru/gifbox
       - name: Docker meta
@@ -260,8 +216,6 @@ jobs:
           build-args: |
             BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-gifbox.outputs.labels }}
-          cache-from: ${{ github.event_name != 'workflow_dispatch' && 'type=gha,scope=buildx-gifbox-multi-arch' || '' }}
-          cache-to: type=gha,scope=buildx-gifbox-multi-arch,mode=max
 
       # cynkru/crond
       - name: Docker meta
@@ -282,8 +236,6 @@ jobs:
           build-args: |
             BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-crond.outputs.labels }}
-          cache-from: ${{ github.event_name != 'workflow_dispatch' && 'type=gha,scope=buildx-crond-multi-arch' || '' }}
-          cache-to: type=gha,scope=buildx-crond-multi-arch,mode=max
 
       # cynkru/pushd
       - name: Docker meta
@@ -304,8 +256,6 @@ jobs:
           build-args: |
             BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-pushd.outputs.labels }}
-          cache-from: ${{ github.event_name != 'workflow_dispatch' && 'type=gha,scope=buildx-pushd-multi-arch' || '' }}
-          cache-to: type=gha,scope=buildx-pushd-multi-arch,mode=max
 
       # cynkru/voice-ingress
       - name: Docker meta
@@ -326,5 +276,3 @@ jobs:
           build-args: |
             BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
           labels: ${{ steps.meta-voice-ingress.outputs.labels }}
-          cache-from: ${{ github.event_name != 'workflow_dispatch' && 'type=gha,scope=buildx-voice-ingress-multi-arch' || '' }}
-          cache-to: type=gha,scope=buildx-voice-ingress-multi-arch,mode=max

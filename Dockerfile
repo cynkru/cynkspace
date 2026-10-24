@@ -8,32 +8,40 @@ ARG TARGETARCH
 ARG CARGO_BUILD_JOBS=10
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 
-RUN case "${TARGETARCH}" in \
-      amd64) linker="x86_64-linux-gnu-gcc"; linker_package="gcc-x86-64-linux-gnu"; build_target="x86_64-unknown-linux-gnu" ;; \
-      arm64) linker="aarch64-linux-gnu-gcc"; linker_package="gcc-aarch64-linux-gnu"; build_target="aarch64-unknown-linux-gnu" ;; \
-      *) echo "Unsupported target architecture: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac && \
-    dpkg --add-architecture "${TARGETARCH}" && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-      make \
-      pkg-config \
-      "${linker_package}" \
-      "libc6-dev:${TARGETARCH}" \
-      "libdav1d-dev:${TARGETARCH}" \
-      "libssl-dev:${TARGETARCH}" && \
-    rustup target add "${build_target}"
+# Install build requirements
+RUN dpkg --add-architecture "${TARGETARCH}"
+RUN apt-get update && \
+    apt-get install -y \
+    make \
+    pkg-config \
+    libdav1d-dev:"${TARGETARCH}" \
+    libssl-dev:"${TARGETARCH}"
+COPY scripts/build-image-layer.sh /tmp/
+RUN sh /tmp/build-image-layer.sh tools
 
+# Build all dependencies
 COPY Cargo.toml Cargo.lock ./
+COPY crates/bonfire/Cargo.toml ./crates/bonfire/
+COPY crates/delta/Cargo.toml ./crates/delta/
+COPY crates/core/config/Cargo.toml ./crates/core/config/
+COPY crates/core/database/Cargo.toml ./crates/core/database/
+COPY crates/core/files/Cargo.toml ./crates/core/files/
+COPY crates/core/models/Cargo.toml ./crates/core/models/
+COPY crates/core/parser/Cargo.toml ./crates/core/parser/
+COPY crates/core/permissions/Cargo.toml ./crates/core/permissions/
+COPY crates/core/presence/Cargo.toml ./crates/core/presence/
+COPY crates/core/result/Cargo.toml ./crates/core/result/
+COPY crates/core/coalesced/Cargo.toml ./crates/core/coalesced/
+COPY crates/core/ratelimits/Cargo.toml ./crates/core/ratelimits/
+COPY crates/common/otel/Cargo.toml ./crates/common/otel/
+COPY crates/services/autumn/Cargo.toml ./crates/services/autumn/
+COPY crates/services/january/Cargo.toml ./crates/services/january/
+COPY crates/services/gifbox/Cargo.toml ./crates/services/gifbox/
+COPY crates/daemons/crond/Cargo.toml ./crates/daemons/crond/
+COPY crates/daemons/pushd/Cargo.toml ./crates/daemons/pushd/
+COPY crates/daemons/voice-ingress/Cargo.toml ./crates/daemons/voice-ingress/
+RUN sh /tmp/build-image-layer.sh deps
+
+# Build all apps
 COPY crates ./crates
-RUN case "${TARGETARCH}" in \
-      amd64) linker="x86_64-linux-gnu-gcc"; build_target="x86_64-unknown-linux-gnu" ;; \
-      arm64) linker="aarch64-linux-gnu-gcc"; build_target="aarch64-unknown-linux-gnu" ;; \
-      *) echo "Unsupported target architecture: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac && \
-    export RUSTFLAGS="-C linker=${linker}" && \
-    export PKG_CONFIG_ALLOW_CROSS=1 && \
-    export PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig" && \
-    cargo build -j "${CARGO_BUILD_JOBS}" --locked --release --target "${build_target}" && \
-    mv target /tmp/cargo-target && \
-    mv "/tmp/cargo-target/${build_target}" target
+RUN sh /tmp/build-image-layer.sh apps
