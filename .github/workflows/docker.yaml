@@ -120,6 +120,8 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
+          build-args: |
+            CARGO_BUILD_JOBS=2
           cache-from: type=gha,scope=buildx-base-multi-arch
           cache-to: type=gha,scope=buildx-base-multi-arch,mode=max
 
