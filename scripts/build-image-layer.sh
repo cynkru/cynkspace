@@ -73,9 +73,6 @@ deps() {
 }
 
 apps() {
-  cargo clean --package revolt-autumn
-  cargo clean --package revolt-bonfire
-
   touch -am \
     crates/bonfire/src/main.rs \
     crates/delta/src/main.rs \
