@@ -8,10 +8,12 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "crates/**"
+      - "scripts/retry-buildx-push.sh"
       - "scripts/build-image-layer.sh"
       - "Dockerfile"
       - "**/Dockerfile"
       - ".dockerignore"
+      - ".github/buildkitd.toml"
       - ".github/workflows/docker.yaml"
     tags:
       - "*"
@@ -24,7 +26,7 @@ permissions:
 
 concurrency:
   group: docker-test-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   changes:
@@ -41,12 +43,15 @@ jobs:
               - 'Dockerfile'
               - '**/Dockerfile'
               - '.dockerignore'
+              - '.github/buildkitd.toml'
+              - 'scripts/retry-buildx-push.sh'
               - 'scripts/build-image-layer.sh'
               - 'scripts/publish-debug-image.sh'
 
   base:
     name: Test base image build (fork)
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     needs: changes
     if: github.event_name == 'pull_request' || github.event.pull_request.head.repo.fork
     steps:
@@ -58,6 +63,8 @@ jobs:
       - name: Set up Docker Buildx
         if: needs.changes.outputs.docker == 'true'
         uses: docker/setup-buildx-action@v2
+        with:
+          config: .github/buildkitd.toml
 
       # Build the image
       - name: Build base image
@@ -68,19 +75,66 @@ jobs:
           push: false
           platforms: linux/amd64,linux/arm64
           tags: ghcr.io/cynkru/base:latest
+          build-args: |
+            CARGO_BUILD_JOBS=1
           cache-from: type=gha,scope=buildx-base-multi-arch
           cache-to: type=gha,scope=buildx-base-multi-arch,mode=max
 
   publish:
     runs-on: self-hosted
+    timeout-minutes: 480
     if: ${{ github.event_name != 'pull_request' && !(github.ref == 'refs/heads/master' && startsWith(github.event.head_commit.message, 'chore(release):')) }}
     name: Publish Docker images
     steps:
       # Configure build environment
       - name: Checkout
         uses: actions/checkout@v3
+      - name: Calculate BuildKit memory limit
+        id: buildkit-memory
+        run: |
+          set -euo pipefail
+
+          memory_bytes=$(awk '/MemAvailable:/ { print $2 * 1024 }' /proc/meminfo)
+          memory_total_bytes=$(awk '/MemTotal:/ { print $2 * 1024 }' /proc/meminfo)
+
+          if [ -r /sys/fs/cgroup/memory.max ] && [ -r /sys/fs/cgroup/memory.current ]; then
+            cgroup_limit=$(cat /sys/fs/cgroup/memory.max)
+            cgroup_usage=$(cat /sys/fs/cgroup/memory.current)
+          elif [ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ] && [ -r /sys/fs/cgroup/memory/memory.usage_in_bytes ]; then
+            cgroup_limit=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+            cgroup_usage=$(cat /sys/fs/cgroup/memory/memory.usage_in_bytes)
+          else
+            cgroup_limit=max
+            cgroup_usage=0
+          fi
+
+          case "$cgroup_limit:$cgroup_usage" in
+            *[!0-9:]*|:*|*:) ;;
+            *)
+              if [ "$cgroup_limit" -lt "$memory_total_bytes" ]; then
+                cgroup_available=$((cgroup_limit - cgroup_usage))
+                if [ "$cgroup_available" -lt "$memory_bytes" ]; then
+                  memory_bytes=$cgroup_available
+                fi
+              fi
+              ;;
+          esac
+
+          buildkit_bytes=$((memory_bytes * 70 / 100))
+          if [ "$buildkit_bytes" -lt 1073741824 ]; then
+            echo "Runner has insufficient memory for a safe BuildKit limit" >&2
+            exit 1
+          fi
+
+          buildkit_megabytes=$((buildkit_bytes / 1048576))
+          echo "limit=${buildkit_megabytes}m" >> "$GITHUB_OUTPUT"
+          echo "BuildKit memory limit: ${buildkit_megabytes} MiB (70% of available runner memory)"
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
+        with:
+          config: .github/buildkitd.toml
+          driver-opts: |
+            memory=${{ steps.buildkit-memory.outputs.limit }}
 
       # Authenticate with Docker Hub and GHCR
       - name: Login to Github Container Registry
@@ -89,6 +143,9 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Expose GitHub Actions cache runtime
+        uses: crazy-max/ghaction-github-runtime@v4
 
       - name: Determine whether this is the latest release
         id: release
@@ -107,15 +164,11 @@ jobs:
           fi
 
       # Build the image
-      - name: Build base image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
-          cache-from: type=gha,scope=buildx-base-multi-arch
-          cache-to: type=gha,scope=buildx-base-multi-arch,mode=max
+      - name: Build and publish base image
+        env:
+          BUILD_TAGS: ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
+          BUILD_CACHE_SCOPE: buildx-base-multi-arch
+        run: bash scripts/retry-buildx-push.sh
 
       # cynkru/server
       - name: Docker meta
@@ -126,16 +179,12 @@ jobs:
             ghcr.io/cynkru/server
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          file: crates/delta/Dockerfile
-          tags: ${{ steps.meta-delta.outputs.tags }}
-          build-args: |
-            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
-          labels: ${{ steps.meta-delta.outputs.labels }}
+        env:
+          BUILD_FILE: crates/delta/Dockerfile
+          BUILD_TAGS: ${{ steps.meta-delta.outputs.tags }}
+          BUILD_LABELS: ${{ steps.meta-delta.outputs.labels }}
+          BASE_IMAGE: ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
+        run: bash scripts/retry-buildx-push.sh
 
       # cynkru/bonfire
       - name: Docker meta
@@ -146,16 +195,12 @@ jobs:
             ghcr.io/cynkru/bonfire
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          file: crates/bonfire/Dockerfile
-          tags: ${{ steps.meta-bonfire.outputs.tags }}
-          build-args: |
-            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
-          labels: ${{ steps.meta-bonfire.outputs.labels }}
+        env:
+          BUILD_FILE: crates/bonfire/Dockerfile
+          BUILD_TAGS: ${{ steps.meta-bonfire.outputs.tags }}
+          BUILD_LABELS: ${{ steps.meta-bonfire.outputs.labels }}
+          BASE_IMAGE: ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
+        run: bash scripts/retry-buildx-push.sh
 
       # cynkru/autumn
       - name: Docker meta
@@ -166,16 +211,12 @@ jobs:
             ghcr.io/cynkru/autumn
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          file: crates/services/autumn/Dockerfile
-          tags: ${{ steps.meta-autumn.outputs.tags }}
-          build-args: |
-            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
-          labels: ${{ steps.meta-autumn.outputs.labels }}
+        env:
+          BUILD_FILE: crates/services/autumn/Dockerfile
+          BUILD_TAGS: ${{ steps.meta-autumn.outputs.tags }}
+          BUILD_LABELS: ${{ steps.meta-autumn.outputs.labels }}
+          BASE_IMAGE: ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
+        run: bash scripts/retry-buildx-push.sh
 
       # cynkru/january
       - name: Docker meta
@@ -186,16 +227,12 @@ jobs:
             ghcr.io/cynkru/january
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          file: crates/services/january/Dockerfile
-          tags: ${{ steps.meta-january.outputs.tags }}
-          build-args: |
-            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
-          labels: ${{ steps.meta-january.outputs.labels }}
+        env:
+          BUILD_FILE: crates/services/january/Dockerfile
+          BUILD_TAGS: ${{ steps.meta-january.outputs.tags }}
+          BUILD_LABELS: ${{ steps.meta-january.outputs.labels }}
+          BASE_IMAGE: ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
+        run: bash scripts/retry-buildx-push.sh
 
       # cynkru/gifbox
       - name: Docker meta
@@ -206,16 +243,12 @@ jobs:
             ghcr.io/cynkru/gifbox
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          file: crates/services/gifbox/Dockerfile
-          tags: ${{ steps.meta-gifbox.outputs.tags }}
-          build-args: |
-            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
-          labels: ${{ steps.meta-gifbox.outputs.labels }}
+        env:
+          BUILD_FILE: crates/services/gifbox/Dockerfile
+          BUILD_TAGS: ${{ steps.meta-gifbox.outputs.tags }}
+          BUILD_LABELS: ${{ steps.meta-gifbox.outputs.labels }}
+          BASE_IMAGE: ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
+        run: bash scripts/retry-buildx-push.sh
 
       # cynkru/crond
       - name: Docker meta
@@ -226,16 +259,12 @@ jobs:
             ghcr.io/cynkru/crond
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          file: crates/daemons/crond/Dockerfile
-          tags: ${{ steps.meta-crond.outputs.tags }}
-          build-args: |
-            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
-          labels: ${{ steps.meta-crond.outputs.labels }}
+        env:
+          BUILD_FILE: crates/daemons/crond/Dockerfile
+          BUILD_TAGS: ${{ steps.meta-crond.outputs.tags }}
+          BUILD_LABELS: ${{ steps.meta-crond.outputs.labels }}
+          BASE_IMAGE: ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
+        run: bash scripts/retry-buildx-push.sh
 
       # cynkru/pushd
       - name: Docker meta
@@ -246,16 +275,12 @@ jobs:
             ghcr.io/cynkru/pushd
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          file: crates/daemons/pushd/Dockerfile
-          tags: ${{ steps.meta-pushd.outputs.tags }}
-          build-args: |
-            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
-          labels: ${{ steps.meta-pushd.outputs.labels }}
+        env:
+          BUILD_FILE: crates/daemons/pushd/Dockerfile
+          BUILD_TAGS: ${{ steps.meta-pushd.outputs.tags }}
+          BUILD_LABELS: ${{ steps.meta-pushd.outputs.labels }}
+          BASE_IMAGE: ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
+        run: bash scripts/retry-buildx-push.sh
 
       # cynkru/voice-ingress
       - name: Docker meta
@@ -266,13 +291,9 @@ jobs:
             ghcr.io/cynkru/voice-ingress
           flavor: latest=${{ steps.release.outputs.latest }}
       - name: Publish
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          file: crates/daemons/voice-ingress/Dockerfile
-          tags: ${{ steps.meta-voice-ingress.outputs.tags }}
-          build-args: |
-            BASE_IMAGE=ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
-          labels: ${{ steps.meta-voice-ingress.outputs.labels }}
+        env:
+          BUILD_FILE: crates/daemons/voice-ingress/Dockerfile
+          BUILD_TAGS: ${{ steps.meta-voice-ingress.outputs.tags }}
+          BUILD_LABELS: ${{ steps.meta-voice-ingress.outputs.labels }}
+          BASE_IMAGE: ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
+        run: bash scripts/retry-buildx-push.sh
