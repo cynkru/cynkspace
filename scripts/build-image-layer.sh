@@ -23,48 +23,6 @@ tools() {
 }
 
 deps() {
-  mkdir -p \
-    crates/bonfire/src \
-    crates/delta/src \
-    crates/core/config/src \
-    crates/core/database/src \
-    crates/core/files/src \
-    crates/core/models/src \
-    crates/core/parser/src \
-    crates/core/permissions/src \
-    crates/core/presence/src \
-    crates/core/result/src \
-    crates/core/coalesced/src \
-    crates/core/ratelimits/src \
-    crates/common/otel/src \
-    crates/services/autumn/src \
-    crates/services/january/src \
-    crates/services/gifbox/src \
-    crates/daemons/crond/src \
-    crates/daemons/pushd/src \
-    crates/daemons/voice-ingress/src
-  echo 'fn main() { panic!("stub"); }' |
-    tee crates/bonfire/src/main.rs |
-    tee crates/delta/src/main.rs |
-    tee crates/services/autumn/src/main.rs |
-    tee crates/services/january/src/main.rs |
-    tee crates/services/gifbox/src/main.rs |
-    tee crates/daemons/crond/src/main.rs |
-    tee crates/daemons/pushd/src/main.rs |
-    tee crates/daemons/voice-ingress/src/main.rs
-  echo '' |
-    tee crates/core/config/src/lib.rs |
-    tee crates/core/database/src/lib.rs |
-    tee crates/core/files/src/lib.rs |
-    tee crates/core/models/src/lib.rs |
-    tee crates/core/parser/src/lib.rs |
-    tee crates/core/permissions/src/lib.rs |
-    tee crates/core/presence/src/lib.rs |
-    tee crates/core/result/src/lib.rs |
-    tee crates/core/coalesced/src/lib.rs |
-    tee crates/core/ratelimits/src/lib.rs |
-    tee crates/common/otel/src/lib.rs
-  
   if [ -z "$TARGETARCH" ]; then
     cargo build -j "${CARGO_BUILD_JOBS:-1}" --locked --release
   else
