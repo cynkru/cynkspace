@@ -297,3 +297,14 @@ jobs:
           BUILD_LABELS: ${{ steps.meta-voice-ingress.outputs.labels }}
           BASE_IMAGE: ghcr.io/cynkru/base:${{ steps.base.outputs.tag }}
         run: bash scripts/retry-buildx-push.sh
+
+      - name: Send ntfy notification
+        if: always() # Важно: отправлять уведомление в любом случае
+        run: |
+          curl -H "Title: Билд ${{ job.status }}" \
+               -H "Priority: ${{ job.status == 'failure' && 'high' || 'default' }}" \
+               -H "Tags: ${{ job.status == 'failure' && 'warning' || 'white_check_mark' }}" \
+               -d "Репозиторий: ${{ github.repository }}
+          Комит: ${{ github.sha }}
+          Жоб: ${{ job.status }}" \
+               https://ntfy.sh/${{ secrets.NTFY_TOPIC }}
