@@ -20,7 +20,9 @@ pub async fn profile(
     target: Reference<'_>,
 ) -> Result<Json<v0::UserProfile>> {
     if user.id == target.id {
-        return Ok(Json(user.profile.map(Into::into).unwrap_or_default()));
+        let mut profile: v0::UserProfile = user.profile.map(Into::into).unwrap_or_default();
+        profile.premium_til = user.premium_til;
+        return Ok(Json(profile));
     }
 
     let target = target.as_user(db).await?;
@@ -30,5 +32,7 @@ pub async fn profile(
         .await
         .throw_if_lacking_user_permission(UserPermission::ViewProfile)?;
 
-    Ok(Json(target.profile.map(Into::into).unwrap_or_default()))
+    let mut profile: v0::UserProfile = target.profile.map(Into::into).unwrap_or_default();
+    profile.premium_til = target.premium_til;
+    Ok(Json(profile))
 }

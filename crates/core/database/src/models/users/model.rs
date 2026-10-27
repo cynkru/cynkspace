@@ -141,6 +141,10 @@ auto_derived!(
         /// Background visible on user's profile
         #[serde(skip_serializing_if = "Option::is_none")]
         pub background: Option<File>,
+
+        /// Premium expiration timestamp
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        pub premium_til: Option<Timestamp>,
     }
 
     /// Bot information for if the user is a bot
