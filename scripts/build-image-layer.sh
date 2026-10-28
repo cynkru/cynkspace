@@ -119,6 +119,21 @@ apps() {
     cargo build -j "${CARGO_BUILD_JOBS:-10}" --locked --release --target "${BUILD_TARGET}"
     mv target _target && mv _target/"${BUILD_TARGET}" target
   fi
+    for binary in \
+    revolt-bonfire \
+    revolt-delta \
+    revolt-autumn \
+    revolt-january \
+    revolt-gifbox \
+    revolt-crond \
+    revolt-pushd \
+    revolt-voice-ingress
+  do
+    if [ ! -x "target/release/$binary" ]; then
+      echo "ERROR: Missing or non-executable binary: target/release/$binary" >&2
+      exit 1
+    fi
+  done
 }
 
 if [ -z "$TARGETARCH" ]; then
