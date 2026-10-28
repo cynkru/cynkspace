@@ -1452,6 +1452,7 @@ impl From<UserProfile> for crate::UserProfile {
         crate::UserProfile {
             content: value.content,
             background: value.background.map(|file| file.into()),
+            premium_til: None,
         }
     }
 }
