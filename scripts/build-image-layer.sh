@@ -1,6 +1,6 @@
 #!/bin/sh
 # If you're having trouble building this locally or on your CI, try lowering
-# the job count via CARGO_BUILD_JOBS. It defaults to 1.
+# the job count via CARGO_BUILD_JOBS. It defaults to 10.
 
 if [ -z "$TARGETARCH" ]; then
   :
@@ -23,10 +23,64 @@ tools() {
 }
 
 deps() {
+  mkdir -p \
+    crates/bonfire/src \
+    crates/delta/src \
+    crates/core/config/src \
+    crates/core/database/src \
+    crates/core/files/src \
+    crates/core/models/src \
+    crates/core/parser/src \
+    crates/core/permissions/src \
+    crates/core/presence/src \
+    crates/core/result/src \
+    crates/core/coalesced/src \
+    crates/core/ratelimits/src \
+    crates/common/otel/src \
+    crates/services/autumn/src \
+    crates/services/january/src \
+    crates/services/gifbox/src \
+    crates/daemons/crond/src \
+    crates/daemons/pushd/src \
+    crates/daemons/voice-ingress/src
+  echo 'fn main() { panic!("stub"); }' |
+    tee crates/bonfire/src/main.rs |
+    tee crates/delta/src/main.rs |
+    tee crates/services/autumn/src/main.rs |
+    tee crates/services/january/src/main.rs |
+    tee crates/services/gifbox/src/main.rs |
+    tee crates/daemons/crond/src/main.rs |
+    tee crates/daemons/pushd/src/main.rs |
+    tee crates/daemons/voice-ingress/src/main.rs
+  echo '' |
+    tee crates/core/config/src/lib.rs |
+    tee crates/core/database/src/lib.rs |
+    tee crates/core/files/src/lib.rs |
+    tee crates/core/models/src/lib.rs |
+    tee crates/core/parser/src/lib.rs |
+    tee crates/core/permissions/src/lib.rs |
+    tee crates/core/presence/src/lib.rs |
+    tee crates/core/result/src/lib.rs |
+    tee crates/core/coalesced/src/lib.rs |
+    tee crates/core/ratelimits/src/lib.rs |
+    tee crates/common/otel/src/lib.rs
+  
   if [ -z "$TARGETARCH" ]; then
-    cargo build -j "${CARGO_BUILD_JOBS:-1}" --locked --release
+    cargo build -j "${CARGO_BUILD_JOBS:-10}" --locked --release
   else
-    cargo build -j "${CARGO_BUILD_JOBS:-1}" --locked --release --target "${BUILD_TARGET}"
+    cargo build -j "${CARGO_BUILD_JOBS:-10}" --locked --release --target "${BUILD_TARGET}"
+  fi
+  if [ -z "$TARGETARCH" ]; then
+    rm -f target/release/revolt-autumn target/release/revolt-delta
+    cargo clean --release --package revolt-autumn
+    cargo clean --release --package revolt-delta
+  else
+    rm -f \
+      "target/${BUILD_TARGET}/release/revolt-autumn" \
+      "target/${BUILD_TARGET}/release/revolt-delta"
+
+    cargo clean --release --target "$BUILD_TARGET" --package revolt-autumn
+    cargo clean --release --target "$BUILD_TARGET" --package revolt-delta
   fi
 }
 
@@ -47,11 +101,22 @@ apps() {
     crates/core/coalesced/src/lib.rs \
     crates/core/ratelimits/src/lib.rs \
     crates/common/otel/src/lib.rs
-  
   if [ -z "$TARGETARCH" ]; then
-    cargo build -j "${CARGO_BUILD_JOBS:-1}" --locked --release
+    rm -f target/release/revolt-autumn target/release/revolt-delta
+    cargo clean --release --package revolt-autumn
+    cargo clean --release --package revolt-delta
   else
-    cargo build -j "${CARGO_BUILD_JOBS:-1}" --locked --release --target "${BUILD_TARGET}"
+    rm -f \
+      "target/${BUILD_TARGET}/release/revolt-autumn" \
+      "target/${BUILD_TARGET}/release/revolt-delta"
+
+    cargo clean --release --target "$BUILD_TARGET" --package revolt-autumn
+    cargo clean --release --target "$BUILD_TARGET" --package revolt-delta
+  fi
+  if [ -z "$TARGETARCH" ]; then
+    cargo build -j "${CARGO_BUILD_JOBS:-10}" --locked --release
+  else
+    cargo build -j "${CARGO_BUILD_JOBS:-10}" --locked --release --target "${BUILD_TARGET}"
     mv target _target && mv _target/"${BUILD_TARGET}" target
   fi
 }

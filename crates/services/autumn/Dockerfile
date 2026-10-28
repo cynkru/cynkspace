@@ -1,5 +1,6 @@
 # Build Stage
-FROM ghcr.io/cynkru/base:latest AS builder
+ARG BASE_IMAGE=ghcr.io/cynkru/base:latest
+FROM ${BASE_IMAGE} AS builder
 FROM debian:13 AS debian
 RUN apt-get update && \
     apt-get install -y --no-install-recommends libdav1d7 && \
