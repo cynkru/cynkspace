@@ -171,6 +171,7 @@ auto_derived!(
         /// Background visible on user's profile
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub background: Option<File>,
+        pub premium_til: Option<Timestamp>,
     }
 
     /// User badge bitfield
